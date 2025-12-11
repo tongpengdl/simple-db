@@ -34,21 +34,31 @@ Result<Page*> BufferPoolManager::FetchPage(PageId page_id) {
   auto& victim_frame = frames_[frame_id];
   if (victim_frame.page.id != kInvalidPageId) {
     if (victim_frame.is_dirty) {
-      disk_manager_->WritePage(
+      auto status = disk_manager_->WritePage(
           victim_frame.page.id,
           reinterpret_cast<char*>(victim_frame.page.data.data()));
+      if (!status.ok()) {
+        replacer_.emplace_front(frame_id);
+        return status;
+      }
     }
     page_table_.erase(victim_frame.page.id);
+  }
+
+  auto status = disk_manager_->ReadPage(
+      page_id, reinterpret_cast<char*>(victim_frame.page.data.data()));
+  if (!status.ok()) {
+    victim_frame.page.id = kInvalidPageId;
+    victim_frame.pin_count = 0;
+    victim_frame.is_dirty = false;
+    ClearPage(victim_frame.page);
+    free_list_.emplace_front(frame_id);
+    return status;
   }
 
   victim_frame.page.id = page_id;
   victim_frame.pin_count = 1;
   victim_frame.is_dirty = false;
-
-  auto status = disk_manager_->ReadPage(page_id, reinterpret_cast<char*>(victim_frame.page.data.data()));
-  if (!status.ok()) {
-    return status;
-  }
 
   page_table_[page_id] = frame_id;
 
@@ -111,9 +121,13 @@ Result<Page*> BufferPoolManager::NewPage() {
   auto& new_frame = frames_[frame_id];
   if (new_frame.page.id != kInvalidPageId) {
     if (new_frame.is_dirty) {
-      disk_manager_->WritePage(
+      auto status = disk_manager_->WritePage(
           new_frame.page.id,
           reinterpret_cast<char*>(new_frame.page.data.data()));
+      if (!status.ok()) {
+        replacer_.emplace_front(frame_id);
+        return status;
+      }
     }
     page_table_.erase(new_frame.page.id);
   }
@@ -121,6 +135,10 @@ Result<Page*> BufferPoolManager::NewPage() {
   auto page_id_res = disk_manager_->AllocatePage();
   if (!page_id_res.ok()) {
     // If we can't allocate a new page, put the frame back on the free list
+    new_frame.page.id = kInvalidPageId;
+    new_frame.pin_count = 0;
+    new_frame.is_dirty = false;
+    ClearPage(new_frame.page);
     free_list_.emplace_front(frame_id);
     return page_id_res.status();
   }
