@@ -7,7 +7,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 add_library(simpledb
-  src/pager.cpp
+  src/disk_manager.cpp
+  src/buffer_pool_manager.cpp
   src/page.cpp
   src/record.cpp
 )
@@ -20,6 +21,6 @@ target_link_libraries(simpledb_cli PRIVATE simpledb)
 
 enable_testing()
 
-add_executable(pager_test tests/pager_test.cpp)
-target_link_libraries(pager_test PRIVATE simpledb)
-add_test(NAME pager_test COMMAND pager_test)
+add_executable(buffer_pool_manager_test tests/buffer_pool_manager_test.cpp)
+target_link_libraries(buffer_pool_manager_test PRIVATE simpledb)
+add_test(NAME buffer_pool_manager_test COMMAND buffer_pool_manager_test)
